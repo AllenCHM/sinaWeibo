@@ -6,10 +6,11 @@ import re
 import sys,os
 import hashlib
 import Queue
-
+import time
 class WeiboSpider:
-    def __init__(self):
+    def __init__(self): 
         return None
+    
     def SpiderLogin(self, user, pwd, enableProxy = False):#Call interfaces in WeiboLogin to login
         weiboLogin = weibologin.WeiboLogin(user, pwd)#username,password #__init__ constructor
         loginStatus = weiboLogin.Login()
@@ -20,46 +21,33 @@ class WeiboSpider:
             return False
         
     def ParseHtmlConcernsCNumFansFNumUidName(self,htmlUtf8String):
-        #os.chdir(os.path.dirname(sys.argv[0]))
-        #outFileName='Hello.htm'
-        #fp1=open(outFileName,'wb')
-        #fp1.write(htmlUtf8String)
-        #fp1.close()
         Concerns=re.search('(href=\\\\")(http:\\\\/\\\\/weibo\\.com\\\\/p\\\\/\\d+\\\\/follow\\?from=.+&mod=headfollow#place\\\\)(" >)'.encode('utf8'),htmlUtf8String)#ret utf8
-        #Concerns=re.search('(href=\\\\")(http:\\\\/\\\\/weibo\\.com\\\\/p\\\\/\\d+\\\\/follow\\?.*#place\\\\)(" >)'.encode('utf8'),htmlUtf8String).group(2)#ret utf8
         if Concerns!=None:
             Concerns=Concerns.group(2)
             Concerns=Concerns.decode('utf8')
             Concerns=re.sub('\\\\','',Concerns)
-        #os.chdir(os.path.dirname(sys.argv[0]))
-        #outFileName='Hello.htm'
-        #fp1=open(outFileName,'wb')
-        #fp1.write(htmlUtf8String)
-        #fp1.close() 
-        #print('---------'+sys.getdefaultencoding())
-        CNum=re.search('(\d+)(<\\\\/strong><span class=\\\\"S_txt2\\\\">¹Ø×¢<\\\\/span>)'.decode('gbk').encode('utf8'),htmlUtf8String).group(1)#ret utf8
-        CNum=CNum.decode('utf8')
+        CNum=re.search('(\d+)(<\\\\/strong><span class=\\\\"S_txt2\\\\">å…³æ³¨<\\\\/span>)'.decode('gbk').encode('utf8'),htmlUtf8String)#ret utf8
+        if CNum!=None:
+            CNum=CNum.group(1)
+            CNum=CNum.decode('utf8')
+        else:
+            CNum='0'
         Fans=re.search('(href=\\\\")(http:\\\\/\\\\/weibo\\.com\\\\/p\\\\/\\d+\\\\/follow\\?relate=fans&from=.+&mod=headfans&current=fans#place\\\\)(" >)'.encode('utf8'),htmlUtf8String)
         if Fans!=None:
             Fans=Fans.group(2)
             Fans=Fans.decode('utf8')
             Fans=re.sub('\\\\','',Fans)
-        #print(Fans)
 
-        FNum=re.search('(\d+)(<\\\\/strong><span class=\\\\"S_txt2\\\\">·ÛË¿<\\\\/span>)'.decode('gbk').encode('utf8'),htmlUtf8String).group(1)#ret utf8
-        FNum=FNum.decode('utf8')
-        #print(FNum)
+        FNum=re.search('(\d+)(<\\\\/strong><span class=\\\\"S_txt2\\\\">ç²‰ä¸<\\\\/span>)'.decode('gbk').encode('utf8'),htmlUtf8String)#ret utf8
+        if FNum!=None:
+            FNum=FNum.group(1)
+            FNum=FNum.decode('utf8')
+        else:
+            FNum='0'
         Uid=re.search('(\\$CONFIG\\[\'oid\'\\]=\')(\\d+)(\')'.encode('utf8'),htmlUtf8String).group(2)
         Uid=Uid.decode('utf8')
-        #print(Uid)
-
         Name=re.search('(\\$CONFIG\\[\'onick\'\\]=\')(.+)(\')'.encode('utf8'),htmlUtf8String).group(2)
         Name=Name.decode('utf8')
-        
-        #Fans=re.search(''.encode('utf8'),htmlUtf8String).group(1)#ret utf8
-        #FNum=re.search(''.encode('utf8'),htmlUtf8String).group(1)#ret utf8
-        #Uid=re.search(''.encode('utf8'),htmlUtf8String).group(1)#ret utf8
-        #Name=re.search(''.encode('utf8'),htmlUtf8String).group(1)#ret utf8
         
         return Concerns,CNum,Fans,FNum,Uid,Name
 
@@ -74,16 +62,18 @@ class WeiboSpider:
                     print("The urlQueue is Full,Stop spiding")
                     return
                 fp1.write('  '.encode('utf8')+mUid)
-        PatNextPage=re.compile('(class=\\\\"page next S_txt1 S_line1\\\\" href=\\\\")(\\\\/p\\\\/\\d+\\\\/.*)("><span>ÏÂÒ»Ò³<\\\\/span>)'.decode('gbk').encode('utf8'))
+        PatNextPage=re.compile('(<a bpfilter=\\\\"page\\\\" class=\\\\"page next S_txt1 S_line1\\\\" href=\\\\")(\\\\/p\\\\/\\d+\\\\/.*)("><span>ä¸‹ä¸€é¡µ<\\\\/span><\\\\/a>)'.decode('gbk').encode('utf8'))
 
         result=PatNextPage.search(htmlContent)
 
-        while result!=None:#´æÔÚÏÂÒ»Ò³
-            print("Next Page")#ÏµÍ³ÎÊÌâ£¬ĞÂÀËÎ¢²©¹æ¶¨Ö»ÄÜä¯ÀÀ5Ò³
+        while result!=None:#å­˜åœ¨ä¸‹ä¸€é¡µ
+            print("Next Page")#ç³»ç»Ÿé—®é¢˜ï¼Œæ–°æµªå¾®åšè§„å®šåªèƒ½æµè§ˆ5é¡µ
             
             result=result.group(2)
             result=re.sub('\\\\','',result)
             result='http://weibo.com'+result
+
+            time.sleep(1)
             htmlContent=urllib2.urlopen(result).read()
 
             PatUid=re.compile('(<li class=\\\\"follow_item S_line2\\\\" action-type=\\\\"itemClick\\\\" action-data=\\\\"uid=)(\\d+)'.encode('utf8'))
@@ -100,16 +90,20 @@ class WeiboSpider:
         
     def SpideATime(self,uid4Surf,surfedUid,uidQueue,fp1):
         url4Surf='http://weibo.com/u/'+uid4Surf;
+        time.sleep(1)
         htmlResponse=urllib2.urlopen(url4Surf).read()
         Concerns,CNum,Fans,FNum,Uid,Name=self.ParseHtmlConcernsCNumFansFNumUidName(htmlResponse)
         fp1.write(' <newuser>\n'.encode('utf8'))
+        fp1.write(' '.encode('utf8')+uid4Surf+'\n'.encode('utf8'))
         if Concerns!=None:
             fp1.write('  <concerns>\n'.encode('utf8'))
+            time.sleep(1)
             htmlConcernsUrl=urllib2.urlopen(Concerns).read()
             self.FindAllUids(htmlConcernsUrl,surfedUid,uidQueue,fp1)
             fp1.write('\n  </concerns>\n'.encode('utf8'))
         if Fans!=None:
             fp1.write('  <fans>\n'.encode('utf8'))
+            time.sleep(1)
             htmlFansUrl=urllib2.urlopen(Fans).read()
             self.FindAllUids(htmlConcernsUrl,surfedUid,uidQueue,fp1)
             fp1.write('\n  </fans>\n'.encode('utf8'))
@@ -118,13 +112,13 @@ class WeiboSpider:
     
     def SpiderSpide(self,uidStart,spideNum):
         surfedUid=set()
-        #Ğ´ÎÄ¼ş
+        #å†™æ–‡ä»¶
         os.chdir(os.path.dirname(sys.argv[0]));
         filename1='RelationShip.xml';
         fp1=open(filename1,'wb');
         fp1.write('<?xml version="1.0" encoding="UTF-8"?>\n'.encode('utf8'));
         fp1.write('<recipe>\n'.encode('utf8'))
-        #Ğ´ÎÄ¼ş
+        #å†™æ–‡ä»¶
         uidQueue=Queue.Queue(maxsize=spideNum)
         if uidQueue.put(uidStart,True)==Queue.Full:
             print("The urlQueue is Full,Stop spiding")
@@ -140,48 +134,11 @@ class WeiboSpider:
                 print('SpiderSpide Error')
                 return False
         print('Spiding Ending')
-        #Ğ´ÎÄ¼ş
+        #å†™æ–‡ä»¶
         fp1.write('</recipe>'.encode('utf8'))
         fp1.close()
-        #Ğ´ÎÄ¼ş
+        #å†™æ–‡ä»¶
         return True
-
-#    def FindAllUids(self,htmlContent,urlQueue):
-#        
-#    def SpideATime(self,urlCurr,surfedUrl,urlQueue):#Õë¶ÔÒ»¸öÓÃ»§µÃµ½ËûµÄËùÓĞĞÅÏ¢,ÓÃxmlÀ´±íÊ¾³öÀ´,ÒÔËû¹Ø×¢µÄºÍ¹Ø×¢ËûµÄ×ö¹ã¶ÈÓÅÏÈËÑËÑË÷
-#        htmlResponse=urllib2.urlopen(urlCurr).read()
-#        Concerns,CNum,Fans,FNum,Uid,Name=self.ParseHtmlConcernsCNumFansFNumUidName(htmlResponse)
-#        htmlConcernsUrl=urllib2.urlopen(Concerns)
-#        htmlFansUrl=urllib2.urlopen(Fans)
-#        
-#        return True
-#    def SpiderSpide(self,urlStart,spideNum):
-#        #hashset.Uid#ÓÃUid×÷Îª¹şÏ£Öµ
-#        #hashlib.md5()
-#        surfedUrl=set()
-#        urlQueue=Queue.Queue(maxsize=spideNum)
-#        if urlQueue.put(urlStart,True)==Queue.Full:
-#            print("The urlQueue is Full,Stop spiding")
-#            return True
-#        url4Surf=urlQueue.get_nowait()
-#        self.SpideATime(url4Surf,surfedUrl,urlQueue)
-#        surfedUrl.add(url4Surf)
-#        
-#        while(urlQueue.empty()==False):
-#            url4Surf=urlQueue.get_nowait()
-#            print(url4Surf)
-#            if self.SpideATime(url4Surf,surfedUrl,urlQueue)==False:
-#                print('SpiderSpide Error')
-#                return False
-#        print('Spiding Ending')
-#        return True
-#     
-#        #htmlResponse=htmpResponse.decode('utf8')
-#        
-#        #os.chdir(os.path.dirname(sys.argv[0]))
-#        #usercode=re.search('(u/)(3131400905)',urlStart).group(2)
-#        #oFile=open(usercode+'.txt','wb')
-#        #oFile.write(htmlResponse);
-#        #oFile.close()
+        
         
         
