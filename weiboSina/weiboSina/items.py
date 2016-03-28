@@ -10,5 +10,9 @@ import scrapy
 
 class WeibosinaItem(scrapy.Item):
     # define the fields for your item here like:
-    # name = scrapy.Field()
-    pass
+    uid = scrapy.Field()
+    sex = scrapy.Field()
+    place = scrapy.Field()
+    school = scrapy.Field()
+    profile = scrapy.Field()
+    weiboText = scrapy.Field()

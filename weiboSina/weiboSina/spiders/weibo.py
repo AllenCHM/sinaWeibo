@@ -6,18 +6,23 @@ reload(sys)
 sys.setdefaultencoding('utf-8')
 
 
-from scrapy.http import Request
+from scrapy.http import Request, FormRequest
 from scrapy.spider import Spider
 from scrapy.selector import Selector
 
 import re
 import urllib2
+import urllib
 import random
+from lxml import etree
 
 
 import weibosearch
 import cookielib
 import weiboencode
+import userencode
+
+from weiboSina.items import WeibosinaItem
 
 
 class WeiBoSpider(Spider):
@@ -38,85 +43,215 @@ class WeiBoSpider(Spider):
         passwd = crawler.settings.get(u'PASSWD')
         return cls(userName, passwd)
 
-    def GetServerTime(self):
-        #"Get server time and nonce, which are used to encode the password"
+    def start_requests(self):
         print("Getting server time and nonce...")
-        serverData = urllib2.urlopen(self.serverUrl).read()#get the page content
+        yield Request(self.serverUrl, meta={u'cookiejar':1}, callback=self.GetServerTime)
+
+    def GetServerTime(self, response):
+        serverData = response.body
         print(serverData)#attention:byte string at present,need a conversion to unicode in python3
         weiboSearch=weibosearch.WeiboSearch()
         try:
-
-            serverTime, nonce, pubkey, rsakv = weiboSearch.sServerData(serverData)#parse and get serverTime,nonce
-            return serverTime, nonce, pubkey, rsakv
+            self.serverTime, self.nonce, self.pubkey, self.rsakv = weiboSearch.sServerData(serverData)#parse and get serverTime,nonce
+            encodedUserName = userencode.GetUserName(self.userName)#username encryped by base64
+            encodedPassWord = userencode.get_pwd(self.passWord, self.serverTime, self.nonce, self.pubkey)#cyrrently password encryped by rsa
+            postPara = {
+                'entry': 'weibo',
+                'gateway': '1',
+                'from': '',
+                'savestate': '7',
+                'userticket': '1',
+                'ssosimplelogin': '1',
+                'vsnf': '1',
+                'vsnval': '',
+                'su': encodedUserName,
+                'service': 'miniblog',
+                'servertime': self.serverTime,
+                'nonce': self.nonce,
+                'pwencode': 'rsa2',
+                'sp': encodedPassWord,
+                'encoding': 'UTF-8',
+                'prelt': '115',
+                'rsakv': self.rsakv,
+                'url': 'http://weibo.com/ajaxlogin.php?framelogin=1&callback=parent.sinaSSOController.feedBackUrlCallBack',
+                'returntype': 'META'
+            }
+            postData = urllib.urlencode(postPara) #network encrypt
+            yield Request(self.loginUrl+u'&'+postData, meta={u'cookiejar':response.meta[u'cookiejar']}, headers=self.postHeader, callback=self.getV)
         except:
             print('Get server time & nonce error!')
-            return None
+            return
 
-    def EnableCookie(self):
-        #"Enable cookie & proxy (if needed)."
-        cookiejar = cookielib.LWPCookieJar()#construct cookie
-        cookie_support = urllib2.HTTPCookieProcessor(cookiejar)
-
-        self.opener = urllib2.build_opener(cookie_support, urllib2.HTTPHandler)
-        urllib2.install_opener(self.opener)#construct cookie's opener
-
-
-    def login(self):
-        self.EnableCookie()
-        serverTime, nonce, pubkey, rsakv = self.GetServerTime()#the first step in login
-
-        weiboEncode=weiboencode.WeiboEncode()
-
-        postData = weiboEncode.PostEncode(self.userName,self.passWord,serverTime,nonce,pubkey,rsakv)#cipher username and password
-        print ("Post data length:\n",len(postData))
-
-        req = urllib2.Request(self.loginUrl, postData, self.postHeader)#urllib2 carries a cookie from now on
-
-        print ("Posting request...")
-        result=urllib2.urlopen(req)#second step
-        text = result.read()
-        #print('-----the text is----:',text)
+    def getV(self, response):
         q=re.compile('"retcode":0,"arrURL":')#notice:"retcode":0,"arrURL" indicates success.Why not using 'Set-Cookie:Cookie'?As it isn't in htmlcontent
-        matched=q.search(text)
+        matched=q.search(response.body)
         if matched==None:
             print('Login False,Step: Login Request')
-            matched2=re.search('&retcode=4049&',text)
+            matched2=re.search('&retcode=4049&',response.body)
             if matched2!=None:#indicated from login success login false.Sina judge whether needing verification code after typing in the username sometimes,while always judging whether needing verification code after pust'commit'
                 print('Reason: Please Type in your Verification Code(see the .png in the current directory)')
                 iRand=str(random.randint(100000000,999999999))
                 verifyUrl='http://login.sina.com.cn/cgi/pin.php?r=' + iRand + '&s=0'
-                responseImg=urllib2.urlopen(verifyUrl).read()
-                oFile=open('./verifyImg.png','wb')
-                oFile.write(responseImg);
-                oFile.close()
-                VerificationCode=raw_input('Type in the Code here:')
-                postData = weiboEncode.VerificationCodePostEncode(self.userName,self.passWord,serverTime,nonce,pubkey,rsakv,VerificationCode)
-                print ("Post data length:\n",len(postData))
-                req = urllib2.Request(self.loginUrl, postData, self.postHeader)
-                print ("Posting request...")
-                result=urllib2.urlopen(req)
-                text = result.read()
+                yield Request(verifyUrl, meta={u'cookiejar':response.meta[u'cookiejar']}, callback=self.parseV)
         try:
             weiboSearch=weibosearch.WeiboSearch()
-            loginUrl = weiboSearch.sRedirectData(text)#Redirect the result,Attention:using weiboSearch
-            r=urllib2.urlopen(loginUrl)
-            htmlResponse = r.read()
-            p=re.compile('src="/js/visitor/mini.js"')
-            matched=p.search(htmlResponse)
-            if matched!=None:
-                print('Login False,Step:sRedirectData')
-            else:
-                print('Login Success,Step:sRedirectData')
+            loginUrl = weiboSearch.sRedirectData(response.body)#Redirect the result,Attention:using weiboSearch
+            yield Request(loginUrl, meta={u'cookiejar':response.meta[u'cookiejar']}, callback=self.parse)
         except:
             print ('Login Process error!')
-            return False
+            return
         print ('Login Process sucess!')
-        return True
+        return
 
-    def start_requests(self):
-        loginStatus = self.login()
-        if loginStatus == True:
-            print ("Login Process Success!")
+    def parseV(self, response):
+        oFile=open('./verifyImg.png','wb')
+        oFile.write(response.body);
+        oFile.close()
+        VerificationCode=raw_input('Type in the Code here:')
+        encodedUserName = userencode.GetUserName(self.userName)#username encryped by base64
+        encodedPassWord = userencode.get_pwd(self.passWord, self.serverTime, self.nonce, self.pubkey)#cyrrently password encryped by rsa
+        postPara = {
+            'entry': 'weibo',
+            'gateway': '1',
+            'from': '',
+            'savestate': '7',
+            'userticket': '1',
+            'ssosimplelogin': '1',
+            'door':VerificationCode,
+            'vsnf': '1',
+            'vsnval': '',
+            'su': encodedUserName,
+            'service': 'miniblog',
+            'servertime': self.serverTime,
+            'nonce': self.nonce,
+            'pwencode': 'rsa2',
+            'sp': encodedPassWord,
+            'encoding': 'UTF-8',
+            'prelt': '115',
+            'rsakv':self. rsakv,
+            'url': 'http://weibo.com/ajaxlogin.php?framelogin=1&callback=parent.sinaSSOController.feedBackUrlCallBack',
+            'returntype': 'META'
+        }
+        postData = urllib.urlencode(postPara)
+        print ("Post data length:\n",len(postData))
+        yield Request(self.loginUrl+u'&'+postData, meta={u'cookiejar':response.meta[u'cookiejar']}, headers=self.postHeader, callback=self.getV)
+
+    def parse(self, response):
+        p=re.compile('src="/js/visitor/mini.js"')
+        matched=p.search(response.body)
+        if matched!=None:
+            print('Login False,Step:sRedirectData')
+            return
         else:
-            exit(u'登陆失败')
+            print('Login Success,Step:sRedirectData')
+            name = re.findall(u'"userinfo":\{"uniqueid":"(.*?)"', response.body, re.S)
+            if name:
+                #获取首页
+                url = u'http://weibo.com/{name}'.format(name=name[0])
+                item = {}
+                item[u'id'] = name[0]
+                yield Request(url, meta={u'cookiejar':response.meta[u'cookiejar'], u'item':item}, callback=self.getIndexPageUrl)
+
+                #获取关注页
+                # url = u'http://weibo.com/{name}/follow'.format(name=name)
+                # yield Request(url, meta={u'cookiejar':response.meta[u'cookiejar']}, callback=self.parseFollow)
+            else:
+                print u'get uid error'
+                return
+
+    def getIndexPageUrl(self, response):
+        url = u'http://weibo.com/' + re.findall('\$CONFIG\[\'watermark\'\]=\'(.*?)\'', response.body, re.S)[0] + u'?is_all=1'
+        yield Request(url, meta={u'cookiejar':response.meta[u'cookiejar'], u'item':response.meta[u'item'],}, dont_filter=True, callback=self.parseIndex)
+
+    def parseFollow(self, response):
+        lis = re.findall(u'(<li class=\\\\"member_li S_bg1\\\\" node-type=\\\\"user_item\\\\".*?/li>)', response.body, re.S)
+        for li in lis:
+            item = {}
+            item[u'id'] = re.findall('usercard=\\\\"id=(\d*?)\\\\" >', li, re.S)[0]
+            item[u'userName'] = re.findall('title=\\\\"(.*?)\\\\" usercard=\\\\"', li, re.S)[0]
+            item[u'url'] = re.findall('node-type=\\\\"screen_name\\\\"  href=\\\\"\\\\(.*?)\\\\" class=', li, re.S)[0]
+            yield Request(u'http://weibo.com'+item[u'url'], meta={u'cookiejar':response.meta[u'cookiejar'], u'item':item}, callback=self.parseIndex)
+
+        nextPage = re.findall('class=\\\\"page next S_txt1 S_line1\\\\" href=\\\\"(.*?)"><span>下一页<', response.body, re.S)
+        if nextPage:
+            url = u'http://weibo.com' + nextPage[0]
+            yield Request(url,  meta={u'cookiejar':response.meta[u'cookiejar']}, callback=self.parseFollow)
+
+    def parseIndex(self, response):
+        item = WeibosinaItem()
+        uid = response.meta[u'item'][u'id']
+        try:
+            item[u'place'] = re.findall('W_ficon ficon_cd_place S_ficon\\\\"(.*?)<span class=\\\\"item_text W_fl\\\\">(.*?)<\\\\/span>', response.body, re.S)[0][1].strip()
+        except:
+            item[u'place'] = None
+        try:
+            item[u'school']  = re.findall('毕业于<\\\\/span>(.*?)<a target=\\\\"_blank\\\\" (.*?)>(.*?)<\\\\/a>', response.body, re.S)[0][2]
+        except:
+            item[u'school'] = None
+        try:
+            item[u'profile']  = re.findall('class=\\\\"pf_intro\\\\" title=\\\\"(.*?)\\\\">', response.body, re.S)[0]
+        except:
+            item[u'profile'] = None
+        try:
+            item[u'sex']  = re.findall('<span class=\\\\"icon_bed\\\\"><a><i class=\\\\"W_icon icon_pf_(.*?)\\\\"><\\\\/i>', response.body, re.S)[0]
+        except:
+            item[u'sex'] = None
+        try:
+            weiboText = re.findall('(<div class=\\\\"WB_text W_f14\\\\" node-type=\\\\"feed_list_content\\\\" .*?<\\\\/div>)', response.body, re.S)[0]
+            weiboText = weiboText.replace('\\"', '"').replace('\\n', '').replace('\\/', '/')
+            weiboText = etree.HTML(weiboText.decode(u'utf-8'))
+            item[u'weiboText']  = weiboText.xpath('string(.)').strip().replace(' ', '')
+        except:
+            item[u'weiboText'] = None
+
+        print
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            # return serverTime, nonce, pubkey, rsakv
+        # except:
+        #     print('Get server time & nonce error!')
+        #     return None
+
+    #     loginStatus = self.login()
+    #     if loginStatus == True:
+    #         print ("Login Process Success!")
+    #     else:
+    #         exit(u'登陆失败')
 
