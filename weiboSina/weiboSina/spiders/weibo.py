@@ -15,7 +15,7 @@ import urllib2
 import urllib
 import random
 from lxml import etree
-
+import time
 
 import weibosearch
 import cookielib
@@ -32,7 +32,7 @@ class WeiBoSpider(Spider):
         self.userName = userid
         self.passWord = passwd
 
-        self.serverUrl = "http://login.sina.com.cn/sso/prelogin.php?entry=weibo&callback=sinaSSOController.preloginCallBack&su=&rsakt=mod&client=ssologin.js(v1.4.18)&_=1456673156808"
+        self.serverUrl = "http://login.sina.com.cn/sso/prelogin.php?entry=weibo&callback=sinaSSOController.preloginCallBack&su=&rsakt=mod&client=ssologin.js(v1.4.18)&_={timestamp}".format(timestamp=int(time.time()*1000))
         self.configImgUrl=""
         self.loginUrl = "http://login.sina.com.cn/sso/login.php?client=ssologin.js(v1.4.18)"
         self.postHeader = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:24.0) Gecko/20100101 Firefox/24.0'}
@@ -71,7 +71,7 @@ class WeiBoSpider(Spider):
                 'pwencode': 'rsa2',
                 'sp': encodedPassWord,
                 'encoding': 'UTF-8',
-                'prelt': '115',
+                'prelt': '132',
                 'rsakv': self.rsakv,
                 'url': 'http://weibo.com/ajaxlogin.php?framelogin=1&callback=parent.sinaSSOController.feedBackUrlCallBack',
                 'returntype': 'META'
@@ -179,9 +179,9 @@ class WeiBoSpider(Spider):
 
     def parseIndex(self, response):
         item = WeibosinaItem()
-        uid = response.meta[u'item'][u'id']
+        item[u'uid'] = response.meta[u'item'][u'id']
         try:
-            item[u'place'] = re.findall('W_ficon ficon_cd_place S_ficon\\\\"(.*?)<span class=\\\\"item_text W_fl\\\\">(.*?)<\\\\/span>', response.body, re.S)[0][1].strip()
+            item[u'place'] = re.findall('W_ficon ficon_cd_place S_ficon\\\\"(.*?)<span class=\\\\"item_text W_fl\\\\">(.*?)<\\\\/span>', response.body, re.S)[0][1].replace('\\r', '').replace('\\n', '').replace('\\t', '').strip()
         except:
             item[u'place'] = None
         try:
@@ -200,11 +200,18 @@ class WeiBoSpider(Spider):
             weiboText = re.findall('(<div class=\\\\"WB_text W_f14\\\\" node-type=\\\\"feed_list_content\\\\" .*?<\\\\/div>)', response.body, re.S)[0]
             weiboText = weiboText.replace('\\"', '"').replace('\\n', '').replace('\\/', '/')
             weiboText = etree.HTML(weiboText.decode(u'utf-8'))
-            item[u'weiboText']  = weiboText.xpath('string(.)').strip().replace(' ', '')
+            item[u'weiboText'] = weiboText.xpath('string(.)').strip().replace(' ', '')
         except:
             item[u'weiboText'] = None
-
+        yield item
         print
+
+        url = re.findall('a bpfilter=\\\\"page_frame\\\\"  class=\\\\"t_link S_txt1\\\\" href=\\\\"(.*?)" ><strong class=(.*?)\\\\/strong><span class=\\\\"S_txt2\\\\">关注<\\\\/span>', response.body, re.S)
+        try:
+            url = url[0][0].replace('\\/', '/').replace('\\', '')
+            yield Request(url, meta={u'cookiejar':response.meta[u'cookiejar']}, callback=self.parseFollow)
+        except:
+            print u'can\'t get {uid}\'s followers'.format(uid=response.meta[u'item'][u'uid'])
 
 
 

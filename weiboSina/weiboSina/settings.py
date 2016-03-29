@@ -61,20 +61,22 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 6.1; rv:24.0) Gecko/20100101 Firefox/24.0'
 
 # Configure item pipelines
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
-#ITEM_PIPELINES = {
-#    'weiboSina.pipelines.SomePipeline': 300,
-#}
+ITEM_PIPELINES = {
+   'weiboSina.pipelines.WeibosinaPipeline': 300,
+}
 
+
+DUPEFILTER_CLASS = 'weiboSina.RFPDupeFilter.MyRFPDupeFilter'
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See http://doc.scrapy.org/en/latest/topics/autothrottle.html
 # NOTE: AutoThrottle will honour the standard settings for concurrency and delay
-#AUTOTHROTTLE_ENABLED=True
+# AUTOTHROTTLE_ENABLED=True
 # The initial download delay
-#AUTOTHROTTLE_START_DELAY=5
+# AUTOTHROTTLE_START_DELAY=1
 # The maximum download delay to be set in case of high latencies
-#AUTOTHROTTLE_MAX_DELAY=60
+# AUTOTHROTTLE_MAX_DELAY=30
 # Enable showing throttling stats for every response received:
-#AUTOTHROTTLE_DEBUG=False
+# AUTOTHROTTLE_DEBUG=False
 
 # Enable and configure HTTP caching (disabled by default)
 # See http://scrapy.readthedocs.org/en/latest/topics/downloader-middleware.html#httpcache-middleware-settings
@@ -86,3 +88,17 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 6.1; rv:24.0) Gecko/20100101 Firefox/24.0'
 
 USERNAME = u'15607966477'
 PASSWD = u'a123456'
+
+HOST = u'192.168.2.247'
+USERNAME=u'root'
+PASSWORD=u'000000'
+DBNAME=u'allentest'
+
+
+
+# DEPTH_PRIORITY = 1
+# SCHEDULER_DISK_QUEUE = 'scrapy.squeue.PickleFifoDiskQueue'
+# SCHEDULER_MEMORY_QUEUE = 'scrapy.squeue.FifoMemoryQueue'
+
+# DEPTH_LIMIT = 8
+
