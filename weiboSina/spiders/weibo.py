@@ -44,14 +44,12 @@ class WeiBoSpider(Spider):
         self.count = 0
         self.countMax = WEIBO_COUNT_MAX
 
-
-
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
         userName = crawler.settings.get(u'USERNAME')
         passwd = crawler.settings.get(u'PASSWD')
         WEIBO_COUNT_MAX = crawler.settings.get(u'WEIBO_COUNT_MAX')
-        return cls(userName, passwd)
+        return cls(userName, passwd, WEIBO_COUNT_MAX)
 
     def start_requests(self):
         print("Getting server time and nonce...")
@@ -169,7 +167,7 @@ class WeiBoSpider(Spider):
         try:
             url = u'http://weibo.com/' + re.findall('\$CONFIG\[\'watermark\'\]=\'(.*?)\'', response.body, re.S)[0] + u'?is_all=1'
         except:
-            print u'改賬號可能被凍結了'
+            print u'该账号可能已被冻结，请上pc手动解冻'
             return
         yield Request(url, meta={u'cookiejar':response.meta[u'cookiejar'], u'item':response.meta[u'item'],}, dont_filter=True, callback=self.parseIndex)
 
@@ -189,6 +187,7 @@ class WeiBoSpider(Spider):
                     self.count += 1
                     if self.count > self.countMax:
                         return
+                    #获取首页
                     yield Request(item[u'url'].replace(u'\\', ''), meta={u'cookiejar':response.meta[u'cookiejar'], u'item':item}, callback=self.parseIndex)
                 except:
                     pass
@@ -202,11 +201,12 @@ class WeiBoSpider(Spider):
                 self.count += 1
                 if self.count > self.countMax:
                     return
+                #获取首页
                 yield Request(item[u'url'].replace(u'\\', ''), meta={u'cookiejar':response.meta[u'cookiejar'], u'item':item}, callback=self.parseIndex)
 
         if self.count > self.countMax:
             return
-
+        #获取下一页
         nextPage = re.findall('class=\\\\"page next S_txt1 S_line1\\\\" href=\\\\"(.*?)"><span>下一页<', response.body, re.S)
         if nextPage:
             url = u'http://weibo.com' + nextPage[0]
@@ -214,7 +214,7 @@ class WeiBoSpider(Spider):
             yield Request(url.replace(u'\\', ''),  meta={u'cookiejar':response.meta[u'cookiejar']}, callback=self.parseFollow)
 
     def parseIndex(self, response):
-        item = WeibosinaItem()
+        item = {}
         item[u'uid'] = response.meta[u'item'][u'id']
         try:
             item[u'place'] = re.findall('W_ficon ficon_cd_place S_ficon\\\\"(.*?)<span class=\\\\"item_text W_fl\\\\">(.*?)<\\\\/span>', response.body, re.S)[0][1].replace('\\r', '').replace('\\n', '').replace('\\t', '').strip()
@@ -239,8 +239,6 @@ class WeiBoSpider(Spider):
             item[u'weiboText']  = weiboText.xpath('string(.)').strip().replace(' ', '')
         except:
             item[u'weiboText'] = None
-
-        # print self.count, item[u'uid'], item[u'sex'], item[u'place'], item[u'school'], item[u'profile'], item[u'weiboText']
         self.writer.writerow([
                 unicode(item[u'uid']).encode("utf-8"),
                 unicode(item[u'sex']).encode("utf-8"),
@@ -250,7 +248,7 @@ class WeiBoSpider(Spider):
                 unicode(item[u'weiboText']).encode("utf-8"),
             ])
 
-
+        #获取关注者页面
         url = re.findall('a bpfilter=\\\\"page_frame\\\\"  class=\\\\"t_link S_txt1\\\\" href=\\\\"(.*?)" ><strong class=(.*?)\\\\/strong><span class=\\\\"S_txt2\\\\">关注<\\\\/span>', response.body, re.S)
         try:
             url = url[0][0].replace('\\/', '/').replace('\\', '')

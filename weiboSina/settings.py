@@ -18,6 +18,8 @@ NEWSPIDER_MODULE = 'weiboSina.spiders'
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 USER_AGENT = 'Mozilla/5.0 (Windows NT 6.1; rv:24.0) Gecko/20100101 Firefox/24.0'
 
+LOG_LEVEL = 'INFO'
+
 # Configure maximum concurrent requests performed by Scrapy (default: 16)
 #CONCURRENT_REQUESTS=32
 
@@ -68,6 +70,7 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 6.1; rv:24.0) Gecko/20100101 Firefox/24.0'
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See http://doc.scrapy.org/en/latest/topics/autothrottle.html
 # NOTE: AutoThrottle will honour the standard settings for concurrency and delay
+#延时越短，被冻结账号的概率越高
 AUTOTHROTTLE_ENABLED=True
 # The initial download delay
 AUTOTHROTTLE_START_DELAY=5
@@ -86,10 +89,14 @@ AUTOTHROTTLE_DEBUG=False
 
 USERNAME = u'15607966477'
 PASSWD = u'a123456'
+#设置微博数量，最后抓取数量会比此数据略多一些
 WEIBO_COUNT_MAX = 150
 
+
+#以下代碼以寬度寬度優先
 DEPTH_PRIORITY = 1
 SCHEDULER_DISK_QUEUE = 'scrapy.squeue.PickleFifoDiskQueue'
 SCHEDULER_MEMORY_QUEUE = 'scrapy.squeue.FifoMemoryQueue'
-#
+
+#當以深度為優先時，設置該值，调解深度
 # DEPTH_LIMIT = 15

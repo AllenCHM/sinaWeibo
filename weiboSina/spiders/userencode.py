@@ -1,6 +1,9 @@
 #coding=utf-8
 __author__ = 'AllenCHM'
 
+#coding=utf-8
+__author__ = 'AllenCHM'
+
 
 import sys
 reload(sys)
