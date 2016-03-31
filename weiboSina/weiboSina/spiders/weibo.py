@@ -21,6 +21,8 @@ import weibosearch
 import cookielib
 import weiboencode
 import userencode
+import csv
+
 
 from weiboSina.items import WeibosinaItem
 
@@ -28,19 +30,27 @@ from weiboSina.items import WeibosinaItem
 class WeiBoSpider(Spider):
     name = u'weibo'
 
-    def __init__(self, userid, passwd):
+    def __init__(self, userid, passwd, WEIBO_COUNT_MAX):
         self.userName = userid
         self.passWord = passwd
-
         self.serverUrl = "http://login.sina.com.cn/sso/prelogin.php?entry=weibo&callback=sinaSSOController.preloginCallBack&su=&rsakt=mod&client=ssologin.js(v1.4.18)&_=1456673156808"
         self.configImgUrl=""
         self.loginUrl = "http://login.sina.com.cn/sso/login.php?client=ssologin.js(v1.4.18)"
         self.postHeader = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:24.0) Gecko/20100101 Firefox/24.0'}
+        self.writer = csv.writer(open('test.csv',"wb"),quoting=csv.QUOTE_ALL)
+        tmp = [u'uid', u'sex', u'place', u'school', u'profile', u'weiboText',
+               ]
+        self.writer.writerow([unicode(s).encode("utf-8") for s in tmp])
+        self.count = 0
+        self.countMax = WEIBO_COUNT_MAX
+
+
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
         userName = crawler.settings.get(u'USERNAME')
         passwd = crawler.settings.get(u'PASSWD')
+        WEIBO_COUNT_MAX = crawler.settings.get(u'WEIBO_COUNT_MAX')
         return cls(userName, passwd)
 
     def start_requests(self):
@@ -151,37 +161,63 @@ class WeiBoSpider(Spider):
                 item = {}
                 item[u'id'] = name[0]
                 yield Request(url, meta={u'cookiejar':response.meta[u'cookiejar'], u'item':item}, callback=self.getIndexPageUrl)
-
-                #获取关注页
-                # url = u'http://weibo.com/{name}/follow'.format(name=name)
-                # yield Request(url, meta={u'cookiejar':response.meta[u'cookiejar']}, callback=self.parseFollow)
             else:
                 print u'get uid error'
                 return
 
     def getIndexPageUrl(self, response):
-        url = u'http://weibo.com/' + re.findall('\$CONFIG\[\'watermark\'\]=\'(.*?)\'', response.body, re.S)[0] + u'?is_all=1'
+        try:
+            url = u'http://weibo.com/' + re.findall('\$CONFIG\[\'watermark\'\]=\'(.*?)\'', response.body, re.S)[0] + u'?is_all=1'
+        except:
+            print u'改賬號可能被凍結了'
+            return
         yield Request(url, meta={u'cookiejar':response.meta[u'cookiejar'], u'item':response.meta[u'item'],}, dont_filter=True, callback=self.parseIndex)
 
     def parseFollow(self, response):
         lis = re.findall(u'(<li class=\\\\"member_li S_bg1\\\\" node-type=\\\\"user_item\\\\".*?/li>)', response.body, re.S)
-        for li in lis:
-            item = {}
-            item[u'id'] = re.findall('usercard=\\\\"id=(\d*?)\\\\" >', li, re.S)[0]
-            item[u'userName'] = re.findall('title=\\\\"(.*?)\\\\" usercard=\\\\"', li, re.S)[0]
-            item[u'url'] = re.findall('node-type=\\\\"screen_name\\\\"  href=\\\\"\\\\(.*?)\\\\" class=', li, re.S)[0]
-            yield Request(u'http://weibo.com'+item[u'url'], meta={u'cookiejar':response.meta[u'cookiejar'], u'item':item}, callback=self.parseIndex)
+        if not lis:
+            lis = re.findall(u'(<li class=\\\\"follow_item S_line2\\\\" action-type=\\\\"itemClick.*?/li>)', response.body.replace('\n', ''), re.S)
+            for li in lis:
+                li = li.replace('\\"', '"').replace('\\n', '').replace('\\/', '/')
+                weiboText = etree.HTML(li.decode(u'utf-8'))
+                item = {}
+                try:
+                    item[u'id']  = weiboText.xpath('//a[@usercard]/@usercard')[0].split(u'&')[0].split(u'=')[-1]
+                    item[u'userName']  = weiboText.xpath('//a[@usercard]/text()')[0]
+                    item[u'url']  = u'http://weibo.com' + weiboText.xpath('//a[@usercard]/@href')[0]
+                    print u'parseFollow 1', item[u'url'].replace(u'\\', '')
+                    self.count += 1
+                    if self.count > self.countMax:
+                        return
+                    yield Request(item[u'url'].replace(u'\\', ''), meta={u'cookiejar':response.meta[u'cookiejar'], u'item':item}, callback=self.parseIndex)
+                except:
+                    pass
+        else:
+            for li in lis:
+                item = {}
+                item[u'id'] = re.findall('usercard=\\\\"id=(\d*?)\\\\" >', li, re.S)[0]
+                item[u'userName'] = re.findall('title=\\\\"(.*?)\\\\" usercard=\\\\"', li, re.S)[0]
+                item[u'url'] = u'http://weibo.com' + re.findall('node-type=\\\\"screen_name\\\\"  href=\\\\"\\\\(.*?)\\\\" class=', li, re.S)[0].replace(u'\\', '')
+                print u'parseFollow 1', item[u'url'].replace(u'\\', '')
+                self.count += 1
+                if self.count > self.countMax:
+                    return
+                yield Request(item[u'url'].replace(u'\\', ''), meta={u'cookiejar':response.meta[u'cookiejar'], u'item':item}, callback=self.parseIndex)
+
+        if self.count > self.countMax:
+            return
 
         nextPage = re.findall('class=\\\\"page next S_txt1 S_line1\\\\" href=\\\\"(.*?)"><span>下一页<', response.body, re.S)
         if nextPage:
             url = u'http://weibo.com' + nextPage[0]
-            yield Request(url,  meta={u'cookiejar':response.meta[u'cookiejar']}, callback=self.parseFollow)
+            print u'parseFollow 2', url.replace(u'\\', '')
+            yield Request(url.replace(u'\\', ''),  meta={u'cookiejar':response.meta[u'cookiejar']}, callback=self.parseFollow)
 
     def parseIndex(self, response):
         item = WeibosinaItem()
-        uid = response.meta[u'item'][u'id']
+        item[u'uid'] = response.meta[u'item'][u'id']
         try:
-            item[u'place'] = re.findall('W_ficon ficon_cd_place S_ficon\\\\"(.*?)<span class=\\\\"item_text W_fl\\\\">(.*?)<\\\\/span>', response.body, re.S)[0][1].strip()
+            item[u'place'] = re.findall('W_ficon ficon_cd_place S_ficon\\\\"(.*?)<span class=\\\\"item_text W_fl\\\\">(.*?)<\\\\/span>', response.body, re.S)[0][1].replace('\\r', '').replace('\\n', '').replace('\\t', '').strip()
         except:
             item[u'place'] = None
         try:
@@ -204,54 +240,21 @@ class WeiBoSpider(Spider):
         except:
             item[u'weiboText'] = None
 
-        print
+        # print self.count, item[u'uid'], item[u'sex'], item[u'place'], item[u'school'], item[u'profile'], item[u'weiboText']
+        self.writer.writerow([
+                unicode(item[u'uid']).encode("utf-8"),
+                unicode(item[u'sex']).encode("utf-8"),
+                unicode(item[u'place']).encode("utf-8"),
+                unicode(item[u'school']).encode("utf-8"),
+                unicode(item[u'profile']).encode("utf-8"),
+                unicode(item[u'weiboText']).encode("utf-8"),
+            ])
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            # return serverTime, nonce, pubkey, rsakv
-        # except:
-        #     print('Get server time & nonce error!')
-        #     return None
-
-    #     loginStatus = self.login()
-    #     if loginStatus == True:
-    #         print ("Login Process Success!")
-    #     else:
-    #         exit(u'登陆失败')
-
+        url = re.findall('a bpfilter=\\\\"page_frame\\\\"  class=\\\\"t_link S_txt1\\\\" href=\\\\"(.*?)" ><strong class=(.*?)\\\\/strong><span class=\\\\"S_txt2\\\\">关注<\\\\/span>', response.body, re.S)
+        try:
+            url = url[0][0].replace('\\/', '/').replace('\\', '')
+            print u'parseIndex url', url
+            yield Request(url, meta={u'cookiejar':response.meta[u'cookiejar']}, callback=self.parseFollow)
+        except:
+            print u'can\'t get {uid}\'s followers'.format(uid=response.meta[u'item'][u'id'])
