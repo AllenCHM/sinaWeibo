@@ -38,7 +38,7 @@ class WeiBoSpider(Spider):
         self.loginUrl = "http://login.sina.com.cn/sso/login.php?client=ssologin.js(v1.4.18)"
         self.postHeader = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:24.0) Gecko/20100101 Firefox/24.0'}
         self.writer = csv.writer(open('test.csv',"wb"),quoting=csv.QUOTE_ALL)
-        tmp = [u'uid', u'sex', u'place', u'school', u'profile', u'weiboText',
+        tmp = [u'uid', u'nick', u'sex', u'place', u'school', u'profile', u'weiboText',
                ]
         self.writer.writerow([unicode(s).encode("utf-8") for s in tmp])
         self.count = 0
@@ -216,6 +216,7 @@ class WeiBoSpider(Spider):
     def parseIndex(self, response):
         item = {}
         item[u'uid'] = response.meta[u'item'][u'id']
+        item[u'onick'] = re.findall('\$CONFIG\[\'onick\'\]=\'(.*?)\';', response.body, re.S)[0]
         try:
             item[u'place'] = re.findall('W_ficon ficon_cd_place S_ficon\\\\"(.*?)<span class=\\\\"item_text W_fl\\\\">(.*?)<\\\\/span>', response.body, re.S)[0][1].replace('\\r', '').replace('\\n', '').replace('\\t', '').strip()
         except:
@@ -241,6 +242,7 @@ class WeiBoSpider(Spider):
             item[u'weiboText'] = None
         self.writer.writerow([
                 unicode(item[u'uid']).encode("utf-8"),
+                unicode(item[u'onick']).encode("utf-8"),
                 unicode(item[u'sex']).encode("utf-8"),
                 unicode(item[u'place']).encode("utf-8"),
                 unicode(item[u'school']).encode("utf-8"),
